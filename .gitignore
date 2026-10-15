@@ -1,0 +1,10 @@
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+.DS_Store
+report/*.log
+report/*.tex
+report/*.html
+report/*_files/
+report/*_cache/

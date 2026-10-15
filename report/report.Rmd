@@ -1,0 +1,267 @@
+---
+title: "Diffusion of the Philips Norelco i9000 Prestige Ultra"
+subtitle: "DS 223 Marketing Analytics - Homework 1: Bass Model"
+author: "Arno Barzegarnazari"
+date: "10/13/2026"
+output: 
+  pdf_document:
+    toc: true
+    number_sections: true
+colorlinks: true
+urlcolor: blue
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      fig.align = "center", fig.width = 7, fig.height = 4,
+                      out.width = "90%")
+knitr::opts_knit$set(root.dir = normalizePath(".."))
+```
+
+```{r libraries, include=FALSE}
+library(ggplot2)
+library(ggpubr)
+library(knitr)
+library(diffusion)
+library(scales)
+
+source("helper_functions.R")
+```
+
+# Summary
+
+This report predicts how the **Philips Norelco i9000 Prestige Ultra**, a premium
+smart electric shaver, could spread in **France**. It uses the Bass model.
+The model learns how fast people adopt (p and q) from the past sales of men's
+razors and trimmers in France. The size of the market (M) for the i9000 is
+estimated with simple Fermi logic.
+
+# Step 1: The Innovation
+I chose the **Philips Norelco i9000 Prestige Ultra** from [TIME's The Best Inventions of 2025](https://time.com/collections/best-inventions-2025/) list.
+
+"This electric shaver introduces SenseIQ Pro, a new version of Philips Norelco’s AI-backed technology that helps users find the right shaving pressure via LED guidance lights (orange means too hard, green is just right). Also new is the i9000’s Triple Action Lift & Cut system, which lifts hair from its root to cut it just below the skin’s surface, up to -.08mm. Flexible heads adapt to facial curves to shave hard-to-reach areas, different modes handle everything from thick beards to foam, and, in another first, the charging station’s hood sanitizes the shaver with UV light while the battery refills." (Retrieved from [here](https://time.com/collections/best-inventions-2025/7318257/philips-norelco-i9000-prestige-ultra/))
+
+# Step 2: A Similar Innovation from the Past
+
+- **Function:** both remove facial hair for the same buyers.
+- **Technology:** electric razors and trimmers use a motor and blades. The i9000 adds sensors and AI to adjust the shave.
+- **Market impact:** the i9000 is a premium upgrade of a product people already know, so its spread should look like the spread of electric grooming devices.
+- **Look-Alike:** The look-alike is the earlier generation of men's electric grooming devices.
+
+# Step 3: Historical Data
+**Source:** Statista (2024). Number of men's grooming products sold annually in
+France from 2010 to 2023 (in 1,000 units). Data from GIFAM, published
+September 2024. Statista ID 747972. [Check the source here](https://www.statista.com/statistics/747972/sales-volume-men-s-grooming-products-france/)
+
+The data covers razors and beard/body trimmers. The source has no data for
+2022. The 2023 value is not used to fit the model because it is an estimate.
+I keep it as a check.
+
+```{r data}
+grooming <- read.csv("data/men_grooming_france.csv")
+grooming$t <- grooming$year - 2009 # t = 1 is 2010
+grooming$used <- ifelse(grooming$year <= 2021, "Used for Model Fitting", "Held Out")
+grooming$used <- factor(grooming$used, levels = c("Used for Model Fitting", "Held Out"))
+kable(head(grooming, 3))
+```
+```{r fig-histogram}
+fig_hist <- ggplot(grooming, aes(x = year, y = sales, fill = used)) +
+  geom_col(width = 0.75) +
+  geom_text(aes(label = comma(sales)), vjust = -0.5, size = 3,
+            colour = col_grey) +
+  scale_fill_manual(values = c("Used for Model Fitting" = col_main,
+                               "Held Out" = col_light)) +
+  scale_x_continuous(breaks = 2010:2023) +
+  scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.1))) +
+  labs(title = "Men's Grooming Products Sold in France",
+       subtitle = "Razors and Trimmers, 1,000 units (no data for 2022)",
+       x = NULL, y = "Units Sold (1,000)") +
+  theme_bass() +
+  theme(axis.text.x = element_text(size = 8))
+fig_hist
+ggsave("img/fig1_historical_sales.png", fig_hist,
+       width = 8, height = 4.5, dpi = 300)
+```
+Sales grew every year from 2010 to 2020 and then fell. This is the shape the
+Bass model needs. It grows, reaches a peak, and starts to decline.
+
+# Step 4: Estimating p, q, and M
+I estimated the parameters in two ways: Non-Linear Least Squares (`nls()`) and the `diffusion` package.
+```{r nls}
+# General Formula
+bass_formula <- sales ~ m*(((p+q)^2/p)*exp(-(p+q)*t))/(1+(q/p)*exp(-(p+q)*t))^2
+
+fit_data <- grooming[grooming$year <= 2021, ]
+sales <- fit_data$sales
+t <- fit_data$t
+
+bass_model <- nls(
+  bass_formula, data = fit_data,
+  start = c(list(m =sum(sales)),p = 0.02, q = 0.4))
+kable(round(summary(bass_model)$coefficients, 4))
+```
+
+```{r diffusion}
+diff_m <- diffusion(sales)
+diff_m
+```
+
+```{r params}
+m <- coef(bass_model)[["m"]]
+p <- coef(bass_model)[["p"]]
+q <- coef(bass_model)[["q"]]
+
+t_star <- log(q / p) / (p + q)
+data.frame(
+  Peak_t = round(t_star, 1),
+  Peak_year = round(2009 +t_star),
+  Actual_peak_year = grooming$year[which.max(grooming$sales)])
+```
+
+## Results
+- **p = `r round(p, 4)`** (innovation): a very small share of people buy on their own, without being influenced by others.
+- **q = `r round(q, 4)`** (imitation): about `r round(q / p)` times larger than p. Most growth comes from people copying other buyers.
+- **M = `r fmt(m)`** thousand units (about `r fmt(m / 1000)` million units): the total number of units the model expects in this market over its whole life. This value is very uncertain (its standard error is about half of its size).
+- The `diffusion` package gives similar numbers: p = `r round(diff_m$w[["p"]], 4)`, q = `r round(diff_m$w[["q"]], 4)`, M = `r fmt(diff_m$w[["m"]])`. The small differences come from the different optimization methods.
+
+## Checking the Model
+```{r sens}
+bass_all <- nls(
+  bass_formula, data = grooming,
+  start = c(list(m = sum(grooming$sales), p = 0.02, q = 0.4)))
+
+res <- data.frame(
+  Model = c("2010-2021 (main)", "2010-2021 and 2023"),
+  M = c(coef(bass_model)[["m"]], coef(bass_all)[["m"]]),
+  p = c(coef(bass_model)[["p"]], coef(bass_all)[["p"]]),
+  q = c(coef(bass_model)[["q"]], coef(bass_all)[["q"]]))
+kable(res, digits = c(0, 0, 4, 4), row.names = FALSE, format.args = list(big.mark = ","))
+```
+
+```{r fig-fit}
+curve_df <- data.frame(t = seq(1, 16, by = 0.1))
+curve_df$year <- curve_df$t + 2009
+curve_df$main <- bass.f(curve_df$t, p, q) * m
+curve_df$all  <- bass.f(curve_df$t, coef(bass_all)[["p"]],
+                        coef(bass_all)[["q"]]) * coef(bass_all)[["m"]]
+
+fig_fit <- ggplot() +
+  geom_line(data = curve_df, aes(x = year, y = main,
+            colour = "Bass Fit (2010-2021)"), linewidth = 1) +
+  geom_line(data = curve_df, aes(x = year, y = all,
+            colour = "Bass Fit (2023 included)"), linewidth = 1,
+            linetype = "dashed") +
+  geom_point(data = grooming, aes(x = year, y = sales, shape = used),
+             size = 2.5, colour = col_main) +
+  scale_colour_manual(values = c("Bass Fit (2010-2021)" = col_accent,
+                                 "Bass Fit (with 2023)" = col_grey)) +
+  scale_shape_manual(values = c("Used for Model Fitting" = 16,
+                                "Held Out" = 1)) +
+  scale_x_continuous(breaks = 2010:2025) +
+  scale_y_continuous(labels = comma, limits = c(0, 6000)) +
+  labs(title = "Bass Model Fit", subtitle = "Actual Sales vs. Fitted Curve",
+       x = NULL, y = "Units Sold (1,000)") +
+  theme_bass() + theme(axis.text.x = element_text(size = 8))
+fig_fit
+ggsave("img/fig2_model_fit.png", fig_fit, width = 8, height = 4.5, dpi = 300)
+```
+
+```{r oos}
+pred_2023 <- bass.f(14, p, q) * m
+data.frame(Reported_2023 = 4210, Predicted_2023 = round(pred_2023))
+```
+The data gives 4210 thousand units for 2023, while the model predicts `r fmt(pred_2023)`. This is only a rough check.
+The model follows the growth well, but it predicts a peak in `r round(2009+t_star)`,  while sales actually peaked in 2020. Adding 2023 to the data gives a lower M and a faster model (see the above table). In this case, the estimate should be treated as a rough one.
+
+# Step 5: Predicting the Diffusion of the i9000
+I am using the p and q obtained from the look-alike analysis and will use my estimate of M (see in Step 7). I use the main model (2010-2021).
+
+# Step 6: Scope
+I analyze France, not the whole world, for 3 reasons:
+
+1. The look-alike data describes how the French market behaves.
+2. Philips sells the i9000 in France: [Check Here](https://www.philips.fr/c-m-pe/rasoirs-visage/sec-humide-rasoir-electrique-i9000-prestige-ultra-avec-skiniq-pro)
+3. GIFAM publishes French market numbers that I will use for a simple Fermi estimate.
+
+# Step 7: Number of Adopters by Year
+M is the number of buyers of the i9000 over its life in France. I estimate it in 3 steps:
+
+> **M = people who own an electric razor x share who buy premium x share of premium that is an i9000**
+
+```{r inputs}
+launch_year <- 2025
+horizon <- 15 # number of years to predict
+pool <- 10.5e6 # electric razors in France, 2024 (GIFAM)
+
+fermi <- data.frame(
+  Scenario = c("Low", "Base", "High"),
+  Premium_share = c(0.05, 0.08, 0.12), #ASSUMPTION
+  i9000_share = c(0.10, 0.20, 0.30) #ASSUMPTION 
+)
+
+fermi$M <- pool * fermi$Premium_share * fermi$i9000_share
+kable(fermi, format.args = list(big.mark = ","))
+```
+
+- **10.5 million electric razors** in France in 2024 ([GIFAM](https://www.gifam.fr/accueil-2/pem/le-rasoir/#chiffres-cls))
+- **Premium share and i9000 share** are assumptions used for Fermi estimation. 
+- **Check**: the base M is about `r round(100 * fermi$M[2] / 5.091e6, 1)`% of one year of men's razor and trimmer sales in France ([GIFAM](https://www.gifam.fr/accueil-2/pem/le-rasoir/#chiffres-cls))
+
+## Adopters per Year
+```{r predict}
+tt <- 1:horizon
+years <- launch_year + tt - 1
+
+pred <- data.frame(
+  Year = years,
+  t = tt,
+  a_low = fermi$M[1] * bass.f(tt, p, q),
+  a_base = fermi$M[2] * bass.f(tt, p, q),
+  a_high = fermi$M[3] * bass.f(tt, p, q),
+  A_low  = fermi$M[1] * bass.F(tt, p, q),
+  A_base = fermi$M[2] * bass.F(tt, p, q),
+  A_high = fermi$M[3] * bass.F(tt, p, q)
+)
+
+kable(data.frame(
+  Year = as.character(pred$Year),
+  Adopters = round(pred$a_base),
+  Cumulative = round(pred$A_base),
+  Share_of_M = paste0(round(100 * bass.F(tt, p, q)), "%")),
+  format.args = list(big.mark = ","))
+
+data.frame(Peak_year = round(launch_year + t_star - 1))
+```
+
+```{r fig-prediction, fig.width=10, out.width="100%"}
+fig_cumul <- ggplot(pred, aes(x = Year)) +
+  geom_ribbon(aes(ymin = A_low, ymax = A_high), fill = col_light, alpha = 0.5) +
+  geom_line(aes(y = A_base), colour = col_main, linewidth = 1.1) +
+  scale_y_continuous(labels = comma) +
+  labs(title = "Cumulative Adopters",
+       subtitle = "Line = Base Case, Band = Low to High",
+       x = NULL, y = "Adopters (units)") + theme_bass()
+
+fig_year <- ggplot(pred, aes(x = Year)) +
+  geom_ribbon(aes(ymin = a_low, ymax = a_high), fill = col_light, alpha = 0.5) +
+  geom_line(aes(y = a_base), colour = col_accent, linewidth = 1.1) +
+  scale_y_continuous(labels = comma) +
+  labs(title = "New Adopters per Year",
+       subtitle = "Line = Base Case, Band = Low to High",
+       x = NULL, y = "Adopters (units)") + theme_bass()
+
+fig_pred <- ggarrange(fig_cumul, fig_year, ncol = 2)
+fig_pred
+ggsave("img/fig3_i9000_prediction.png", fig_pred,
+       width = 11, height = 4.5, dpi = 300)
+```
+
+About `r fmt(pred$a_base[1])` buyers in `r launch_year`, growing to about `r fmt(pred$a_base[horizon])` per year in `r years[horizon]`. By then about `r fmt(pred$A_base[horizon])` people have bought it. Because q is low, the model puts the sales peak far away.
+
+# Limits of this Analysis
+- The look-alike market already existed in 2010, so p is not a true "launch" value.
+- Only 12 data points were used to estimate 3 parameters, so M is highly uncertain.
+- Data for 2022 is missing and the 2023 value was an estimate that came with the dataset.
+- Sales in 2020 may be higher because of COVID-19 (more grooming at home).
+- Razors and trimmers are replaced over time, so M counts units, not people.
+- The premium share and the i9000 share in the Fermi estimate are assumptions.
