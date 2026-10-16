@@ -12,7 +12,7 @@ bass.F <- function(t, p, q){
 
 # Colors and Plot Theme for Figures
 col_main <- "#052470"   # dark blue
-col_accent <- "#E07A3F"   # orange or possibly this (701C05)
+col_accent <- "#E07A3F"   # orange
 col_light  <- "#8FA9C4"   # light blue
 col_grey   <- "#6B7280"   # grey text
 

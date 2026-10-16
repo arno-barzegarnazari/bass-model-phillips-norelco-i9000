@@ -2,7 +2,7 @@
 title: "Diffusion of the Philips Norelco i9000 Prestige Ultra"
 subtitle: "DS 223 Marketing Analytics - Homework 1: Bass Model"
 author: "Arno Barzegarnazari"
-date: "10/13/2026"
+date: "10/16/2026"
 output: 
   pdf_document:
     toc: true
