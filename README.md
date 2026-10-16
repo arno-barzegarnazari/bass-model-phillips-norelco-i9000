@@ -1,4 +1,4 @@
-# Bass Model for Philips Norelco i9000 Prestige Ultra - DS 223
+# Bass Model for Philips Norelco i9000 Prestige Ultra
 
 Diffusion forecast for the Philips Norelco i9000 Prestige Ultra in France.
 
